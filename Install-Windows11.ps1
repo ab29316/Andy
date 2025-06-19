@@ -1,8 +1,8 @@
 # Install-Windows11.ps1
 #requires -RunAsAdministrator
 # Upgrades Windows 10 to Windows 11 using Microsoft's Installation Assistant.
-# Logs all activity, creates a restore point, removes optional bloatware, and
-# installs updates only after the system reboots into Windows 11.
+# Logs all activity and, once Windows 11 is active, installs updates and
+# optionally removes built-in apps.
 
 param(
     [switch]$RemoveBloat,
@@ -20,14 +20,21 @@ Start-Transcript -Path $LogFile -Append
 Write-Output "Logging to $LogFile"
 
 $taskName = 'Windows11PostUpgrade'
+$scriptPath = $PSCommandPath
 
 if ($PostUpgrade) {
     # This section runs after the reboot when Windows 11 is installed
     $productName = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName
     if ($productName -notlike '*Windows 11*') {
-        Write-Output "System is not running Windows 11 yet. Exiting."
+        Write-Output 'Still not on Windows 11. Will run again after next reboot.'
         Stop-Transcript
         return
+    }
+
+    $assistantUninstall = 'C:\\Windows10Upgrade\\Windows10UpgraderApp.exe'
+    if (Test-Path $assistantUninstall) {
+        Write-Output 'Removing Installation Assistant'
+        Start-Process -FilePath $assistantUninstall -ArgumentList '/ForceUninstall' -Wait
     }
 
     if ($RemoveBloat) {
@@ -65,14 +72,33 @@ if ($PostUpgrade) {
     Import-Module PSWindowsUpdate
 
     Write-Output 'Installing Windows updates'
-    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot
-
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-    Stop-Transcript
+    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot
+    if (Get-WURebootStatus) {
+        Write-Output 'Reboot required after updates'
+        Restart-Computer -Force
+    } else {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        Write-Output 'Updates installed. Task removed.'
+        Stop-Transcript
+    }
     return
 }
 
 # ------ Pre-upgrade section ------
+
+
+$InstallerUrl  = 'https://go.microsoft.com/fwlink/?linkid=2171764'
+$InstallerPath = "$env:USERPROFILE\Downloads\Windows11InstallationAssistant.exe"
+Write-Output 'Downloading Windows 11 Installation Assistant'
+Invoke-WebRequest -Uri $InstallerUrl -OutFile $InstallerPath -UseBasicParsing
+
+Write-Output 'Creating scheduled task for post-upgrade actions'
+$null = Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+$actionArgs = "-ExecutionPolicy Bypass -File `"$scriptPath`" -PostUpgrade"
+if ($RemoveBloat) { $actionArgs += ' -RemoveBloat' }
+$action  = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument $actionArgs
+$trigger = New-ScheduledTaskTrigger -AtStartup
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -RunLevel Highest -User 'SYSTEM' -Force | Out-Null
 
 # Create a system restore point for rollback
 $srService = Get-Service -Name 'srservice' -ErrorAction SilentlyContinue
@@ -100,17 +126,13 @@ if ($null -ne $srService) {
     Write-Output 'System Restore service not available. Skipping restore point.'
 }
 
-$InstallerUrl  = 'https://go.microsoft.com/fwlink/?linkid=2171764'
-$InstallerPath = "$env:USERPROFILE\Downloads\Windows11InstallationAssistant.exe"
-Write-Output 'Downloading Windows 11 Installation Assistant'
-Invoke-WebRequest -Uri $InstallerUrl -OutFile $InstallerPath -UseBasicParsing
 Write-Output 'Launching Installation Assistant'
-$proc = Start-Process -FilePath $InstallerPath -ArgumentList '/quietinstall /skipeula /auto upgrade' -PassThru
-$proc | Wait-Process
+$proc = Start-Process -FilePath $InstallerPath -ArgumentList '/quietinstall /skipeula /auto upgrade' -PassThru -Wait
 $exitCode = $proc.ExitCode
 Write-Output "Installation Assistant exited with code $exitCode"
 if ($exitCode -ne 0) {
     Write-Output 'Installation Assistant reported an error. Aborting.'
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
     Stop-Transcript
     exit $exitCode
 }
@@ -121,12 +143,5 @@ if (Test-Path $assistantUninstall) {
     Start-Process -FilePath $assistantUninstall -ArgumentList '/ForceUninstall' -Wait
 }
 Remove-Item $InstallerPath -ErrorAction SilentlyContinue
-
-Write-Output 'Scheduling post-upgrade tasks after reboot'
-$actionArgs = "-ExecutionPolicy Bypass -File `"$PSCommandPath`" -PostUpgrade"
-if ($RemoveBloat) { $actionArgs += ' -RemoveBloat' }
-$action  = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument $actionArgs
-$trigger = New-ScheduledTaskTrigger -AtStartup
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Force | Out-Null
-
-Restart-Computer -Force
+Write-Output 'Installation Assistant finished. It will reboot if necessary. Post-upgrade tasks will run automatically.'
+Stop-Transcript
