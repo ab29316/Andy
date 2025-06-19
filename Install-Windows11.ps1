@@ -20,8 +20,31 @@ Start-Transcript -Path $LogFile -Append
 Write-Output "Logging to $LogFile"
 
 # Create a system restore point for rollback
-Write-Output "Creating system restore point"
-Checkpoint-Computer -Description "Pre-Windows11Upgrade" -RestorePointType "MODIFY_SETTINGS"
+# Attempt to create a system restore point
+$srService = Get-Service -Name 'srservice' -ErrorAction SilentlyContinue
+if ($null -ne $srService) {
+    $originalStart = $srService.StartType
+    $changedStart  = $false
+    if ($srService.StartType -eq 'Disabled') {
+        Write-Output 'System Restore service is disabled. Enabling temporarily.'
+        Set-Service -Name 'srservice' -StartupType Manual
+        $changedStart = $true
+    }
+    if ($srService.Status -ne 'Running') {
+        Start-Service -Name 'srservice'
+    }
+    Write-Output 'Creating system restore point'
+    try {
+        Checkpoint-Computer -Description 'Pre-Windows11Upgrade' -RestorePointType 'MODIFY_SETTINGS'
+    } catch {
+        Write-Output "Failed to create restore point: $_"
+    }
+    if ($changedStart) {
+        Set-Service -Name 'srservice' -StartupType $originalStart
+    }
+} else {
+    Write-Output 'System Restore service not available. Skipping restore point.'
+}
 
 # Ensure PSWindowsUpdate module for installing updates
 if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {

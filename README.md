@@ -19,3 +19,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force
 
 The script also detects a `Restricted` policy and temporarily bypasses it for
 the running process.
+
+The script tries to create a system restore point. If the "System Restore"
+service is disabled, it will enable the service temporarily so the restore point
+can be created, then revert the service to its original state.
