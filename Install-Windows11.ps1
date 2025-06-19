@@ -1,14 +1,14 @@
 # Install-Windows11.ps1
 #requires -RunAsAdministrator
-# Example script to upgrade Windows 10 to Windows 11 using Microsoft's
-# Windows 11 Installation Assistant. Logs all actions, creates a restore
-# point, installs updates, and optionally removes some built in apps.
+# Upgrades Windows 10 to Windows 11 using Microsoft's Installation Assistant.
+# Logs all activity, creates a restore point, removes optional bloatware, and
+# installs updates only after the system reboots into Windows 11.
 
 param(
-    [switch]$RemoveBloat
+    [switch]$RemoveBloat,
+    [switch]$PostUpgrade
 )
 
-# Ensure the script can run when execution policy is Restricted
 $currentPolicy = Get-ExecutionPolicy
 if ($currentPolicy -eq 'Restricted') {
     Write-Output 'Execution policy is Restricted. Temporarily setting Bypass for this process.'
@@ -19,8 +19,62 @@ $LogFile = "$env:USERPROFILE\install_windows11_full.log"
 Start-Transcript -Path $LogFile -Append
 Write-Output "Logging to $LogFile"
 
+$taskName = 'Windows11PostUpgrade'
+
+if ($PostUpgrade) {
+    # This section runs after the reboot when Windows 11 is installed
+    $productName = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName
+    if ($productName -notlike '*Windows 11*') {
+        Write-Output "System is not running Windows 11 yet. Exiting."
+        Stop-Transcript
+        return
+    }
+
+    if ($RemoveBloat) {
+        Write-Output 'Removing built-in apps'
+        $Bloatware = @(
+            'Microsoft.3DBuilder',
+            'Microsoft.BingNews',
+            'Microsoft.GetHelp',
+            'Microsoft.Getstarted',
+            'Microsoft.MicrosoftOfficeHub',
+            'Microsoft.MicrosoftSolitaireCollection',
+            'Microsoft.MixedReality.Portal',
+            'Microsoft.People',
+            'Microsoft.SkypeApp',
+            'Microsoft.Xbox.TCUI',
+            'Microsoft.XboxApp',
+            'Microsoft.XboxGameOverlay',
+            'Microsoft.XboxGamingOverlay',
+            'Microsoft.XboxIdentityProvider',
+            'Microsoft.XboxSpeechToTextOverlay',
+            'Microsoft.ZuneMusic',
+            'Microsoft.ZuneVideo'
+        )
+        foreach ($app in $Bloatware) {
+            Get-AppxPackage -Name $app -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+        Write-Output 'Installing PSWindowsUpdate module'
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+        Install-Module -Name PSWindowsUpdate -Force | Out-Null
+    }
+    Write-Output 'Importing PSWindowsUpdate module'
+    Import-Module PSWindowsUpdate
+
+    Write-Output 'Installing Windows updates'
+    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot
+
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    Stop-Transcript
+    return
+}
+
+# ------ Pre-upgrade section ------
+
 # Create a system restore point for rollback
-# Attempt to create a system restore point
 $srService = Get-Service -Name 'srservice' -ErrorAction SilentlyContinue
 if ($null -ne $srService) {
     $originalStart = $srService.StartType
@@ -46,60 +100,33 @@ if ($null -ne $srService) {
     Write-Output 'System Restore service not available. Skipping restore point.'
 }
 
-# Download Windows 11 Installation Assistant and run silently
-$InstallerUrl  = "https://go.microsoft.com/fwlink/?linkid=2171764"
+$InstallerUrl  = 'https://go.microsoft.com/fwlink/?linkid=2171764'
 $InstallerPath = "$env:USERPROFILE\Downloads\Windows11InstallationAssistant.exe"
-Write-Output "Downloading Windows 11 Installation Assistant"
+Write-Output 'Downloading Windows 11 Installation Assistant'
 Invoke-WebRequest -Uri $InstallerUrl -OutFile $InstallerPath -UseBasicParsing
-Write-Output "Launching Installation Assistant"
-Start-Process -FilePath $InstallerPath -ArgumentList '/quietinstall /skipeula /auto upgrade' -PassThru | Wait-Process
-
-# Wait for upgrade-related processes to finish before continuing
-do {
-    $running = Get-Process -Name 'Windows11InstallationAssistant','setuphost' -ErrorAction SilentlyContinue
-    if ($running) { Start-Sleep -Seconds 30 }
-} while ($running)
-Write-Output 'Windows 11 installation completed'
-
-# Remove bloatware (example removing built-in apps)
-if ($RemoveBloat) {
-    Write-Output "Removing built-in apps"
-    $Bloatware = @(
-        'Microsoft.3DBuilder',
-        'Microsoft.BingNews',
-        'Microsoft.GetHelp',
-        'Microsoft.Getstarted',
-        'Microsoft.MicrosoftOfficeHub',
-        'Microsoft.MicrosoftSolitaireCollection',
-        'Microsoft.MixedReality.Portal',
-        'Microsoft.People',
-        'Microsoft.SkypeApp',
-        'Microsoft.Xbox.TCUI',
-        'Microsoft.XboxApp',
-        'Microsoft.XboxGameOverlay',
-        'Microsoft.XboxGamingOverlay',
-        'Microsoft.XboxIdentityProvider',
-        'Microsoft.XboxSpeechToTextOverlay',
-        'Microsoft.ZuneMusic',
-        'Microsoft.ZuneVideo'
-    )
-
-    foreach ($app in $Bloatware) {
-        Get-AppxPackage -Name $app -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
-    }
+Write-Output 'Launching Installation Assistant'
+$proc = Start-Process -FilePath $InstallerPath -ArgumentList '/quietinstall /skipeula /auto upgrade' -PassThru
+$proc | Wait-Process
+$exitCode = $proc.ExitCode
+Write-Output "Installation Assistant exited with code $exitCode"
+if ($exitCode -ne 0) {
+    Write-Output 'Installation Assistant reported an error. Aborting.'
+    Stop-Transcript
+    exit $exitCode
 }
 
-# Ensure PSWindowsUpdate module for installing updates
-if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
-    Write-Output "Installing PSWindowsUpdate module"
-    Install-PackageProvider -Name NuGet -Force | Out-Null
-    Install-Module -Name PSWindowsUpdate -Force | Out-Null
+$assistantUninstall = 'C:\Windows10Upgrade\Windows10UpgraderApp.exe'
+if (Test-Path $assistantUninstall) {
+    Write-Output 'Uninstalling Installation Assistant'
+    Start-Process -FilePath $assistantUninstall -ArgumentList '/ForceUninstall' -Wait
 }
-Write-Output "Importing PSWindowsUpdate module"
-Import-Module PSWindowsUpdate
+Remove-Item $InstallerPath -ErrorAction SilentlyContinue
 
-# Install all Windows updates after upgrade
-Write-Output "Installing Windows updates"
-Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot
+Write-Output 'Scheduling post-upgrade tasks after reboot'
+$actionArgs = "-ExecutionPolicy Bypass -File `"$PSCommandPath`" -PostUpgrade"
+if ($RemoveBloat) { $actionArgs += ' -RemoveBloat' }
+$action  = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument $actionArgs
+$trigger = New-ScheduledTaskTrigger -AtStartup
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Force | Out-Null
 
-Stop-Transcript
+Restart-Computer -Force
