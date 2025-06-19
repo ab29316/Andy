@@ -46,22 +46,20 @@ if ($null -ne $srService) {
     Write-Output 'System Restore service not available. Skipping restore point.'
 }
 
-# Ensure PSWindowsUpdate module for installing updates
-if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
-    Write-Output "Installing PSWindowsUpdate module"
-    Install-PackageProvider -Name NuGet -Force | Out-Null
-    Install-Module -Name PSWindowsUpdate -Force | Out-Null
-}
-Write-Output "Importing PSWindowsUpdate module"
-Import-Module PSWindowsUpdate
-
 # Download Windows 11 Installation Assistant and run silently
 $InstallerUrl  = "https://go.microsoft.com/fwlink/?linkid=2171764"
 $InstallerPath = "$env:USERPROFILE\Downloads\Windows11InstallationAssistant.exe"
 Write-Output "Downloading Windows 11 Installation Assistant"
 Invoke-WebRequest -Uri $InstallerUrl -OutFile $InstallerPath -UseBasicParsing
 Write-Output "Launching Installation Assistant"
-Start-Process -FilePath $InstallerPath -ArgumentList '/quietinstall /skipeula /auto upgrade' -Wait
+Start-Process -FilePath $InstallerPath -ArgumentList '/quietinstall /skipeula /auto upgrade' -PassThru | Wait-Process
+
+# Wait for upgrade-related processes to finish before continuing
+do {
+    $running = Get-Process -Name 'Windows11InstallationAssistant','setuphost' -ErrorAction SilentlyContinue
+    if ($running) { Start-Sleep -Seconds 30 }
+} while ($running)
+Write-Output 'Windows 11 installation completed'
 
 # Remove bloatware (example removing built-in apps)
 if ($RemoveBloat) {
@@ -90,6 +88,15 @@ if ($RemoveBloat) {
         Get-AppxPackage -Name $app -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
     }
 }
+
+# Ensure PSWindowsUpdate module for installing updates
+if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+    Write-Output "Installing PSWindowsUpdate module"
+    Install-PackageProvider -Name NuGet -Force | Out-Null
+    Install-Module -Name PSWindowsUpdate -Force | Out-Null
+}
+Write-Output "Importing PSWindowsUpdate module"
+Import-Module PSWindowsUpdate
 
 # Install all Windows updates after upgrade
 Write-Output "Installing Windows updates"
