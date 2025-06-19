@@ -9,6 +9,27 @@ param(
     [switch]$PostUpgrade
 )
 
+function Wait-SetupHost {
+    param([int]$TimeoutMinutes = 60)
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    $started = $false
+    while ((Get-Date) -lt $deadline) {
+        $proc = Get-Process -Name SetupHost -ErrorAction SilentlyContinue
+        if ($proc) {
+            if (-not $started) {
+                Write-Output 'SetupHost detected. Waiting for it to finish...'
+                $started = $true
+            }
+        } elseif ($started) {
+            Write-Output 'SetupHost process exited'
+            return $true
+        }
+        Start-Sleep -Seconds 10
+    }
+    Write-Output 'Timed out waiting for SetupHost'
+    return $false
+}
+
 $currentPolicy = Get-ExecutionPolicy
 if ($currentPolicy -eq 'Restricted') {
     Write-Output 'Execution policy is Restricted. Temporarily setting Bypass for this process.'
@@ -23,6 +44,7 @@ $taskName = 'Windows11PostUpgrade'
 $scriptPath = $PSCommandPath
 
 if ($PostUpgrade) {
+    Write-Output 'Running post-upgrade tasks'
     # This section runs after the reboot when Windows 11 is installed
     $productName = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName
     if ($productName -notlike '*Windows 11*') {
@@ -76,9 +98,11 @@ if ($PostUpgrade) {
     if (Get-WURebootStatus) {
         Write-Output 'Reboot required after updates'
         Restart-Computer -Force
+        Write-Output 'Post-upgrade tasks completed; rebooting'
     } else {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
         Write-Output 'Updates installed. Task removed.'
+        Write-Output 'Post-upgrade tasks completed'
         Stop-Transcript
     }
     return
@@ -131,6 +155,10 @@ Write-Output 'Launching Installation Assistant'
 $proc = Start-Process -FilePath $InstallerPath -ArgumentList '/quietinstall /skipeula /auto upgrade' -PassThru -Wait
 $exitCode = $proc.ExitCode
 Write-Output "Installation Assistant exited with code $exitCode"
+if (Wait-SetupHost -TimeoutMinutes 120) { Write-Output 'Setup phase finished' } else { Write-Output 'Setup phase timeout or failure' }
+$productName = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName
+Write-Output "OS after setup: $productName"
+if ($productName -like '*Windows 11*') { Write-Output 'Upgrade detected' } else { Write-Output 'Upgrade not detected' }
 if ($exitCode -ne 0) {
     Write-Output 'Installation Assistant reported an error. Aborting.'
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
