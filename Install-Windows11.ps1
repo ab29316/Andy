@@ -106,24 +106,22 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Pr
 # Create a system restore point for rollback
 $srService = Get-Service -Name 'srservice' -ErrorAction SilentlyContinue
 if ($null -ne $srService) {
-    $originalStart = $srService.StartType
-    $changedStart  = $false
     if ($srService.StartType -eq 'Disabled') {
-        Write-Output 'System Restore service is disabled. Enabling temporarily.'
+        Write-Output 'System Restore service is disabled. Enabling.'
         Set-Service -Name 'srservice' -StartupType Manual
-        $changedStart = $true
     }
     if ($srService.Status -ne 'Running') {
         Start-Service -Name 'srservice'
     }
+
+    Write-Output 'Enabling System Restore on system drive'
+    Enable-ComputerRestore -Drive "$env:SystemDrive\" | Out-Null
+
     Write-Output 'Creating system restore point'
     try {
         Checkpoint-Computer -Description 'Pre-Windows11Upgrade' -RestorePointType 'MODIFY_SETTINGS'
     } catch {
         Write-Output "Failed to create restore point: $_"
-    }
-    if ($changedStart) {
-        Set-Service -Name 'srservice' -StartupType $originalStart
     }
 } else {
     Write-Output 'System Restore service not available. Skipping restore point.'
