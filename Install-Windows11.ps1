@@ -94,11 +94,14 @@ Invoke-WebRequest -Uri $InstallerUrl -OutFile $InstallerPath -UseBasicParsing
 
 Write-Output 'Creating scheduled task for post-upgrade actions'
 $null = Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-$actionArgs = "-ExecutionPolicy Bypass -File `"$scriptPath`" -PostUpgrade"
+$psExe = Join-Path $PSHome 'powershell.exe'
+$actionArgs = "-ExecutionPolicy Bypass -NoProfile -File `"$scriptPath`" -PostUpgrade"
 if ($RemoveBloat) { $actionArgs += ' -RemoveBloat' }
-$action  = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument $actionArgs
+$action = New-ScheduledTaskAction -Execute $psExe -Argument $actionArgs
 $trigger = New-ScheduledTaskTrigger -AtStartup
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -RunLevel Highest -User 'SYSTEM' -Force | Out-Null
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
 # Create a system restore point for rollback
 $srService = Get-Service -Name 'srservice' -ErrorAction SilentlyContinue
