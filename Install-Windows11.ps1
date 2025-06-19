@@ -1,4 +1,5 @@
 # Install-Windows11.ps1
+#requires -RunAsAdministrator
 # Example script to upgrade Windows 10 to Windows 11 using Microsoft's
 # Windows 11 Installation Assistant. Logs all actions, creates a restore
 # point, installs updates, and optionally removes some built in apps.
@@ -6,6 +7,13 @@
 param(
     [switch]$RemoveBloat
 )
+
+# Ensure the script can run when execution policy is Restricted
+$currentPolicy = Get-ExecutionPolicy
+if ($currentPolicy -eq 'Restricted') {
+    Write-Output 'Execution policy is Restricted. Temporarily setting Bypass for this process.'
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+}
 
 $LogFile = "$env:USERPROFILE\install_windows11_full.log"
 Start-Transcript -Path $LogFile -Append
