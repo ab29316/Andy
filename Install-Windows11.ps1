@@ -144,5 +144,6 @@ if (Test-Path $assistantUninstall) {
     Start-Process -FilePath $assistantUninstall -ArgumentList '/ForceUninstall' -Wait
 }
 Remove-Item $InstallerPath -ErrorAction SilentlyContinue
-Write-Output 'Installation Assistant finished. It will reboot if necessary. Post-upgrade tasks will run automatically.'
+Write-Output 'Installation Assistant completed successfully. Restarting now so post-upgrade tasks can run.'
 Stop-Transcript
+Restart-Computer -Force
