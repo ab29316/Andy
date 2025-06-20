@@ -39,44 +39,14 @@ function Wait-SetupHost {
     return $false
 }
 
-function Ensure-RestorePoint {
-    Write-Output 'Ensuring System Restore can create a restore point'
-    $policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\SystemRestore'
-    if (Test-Path $policyPath) {
-        foreach ($name in 'DisableSR','DisableConfig','DisableMonitoring') {
-            if (Get-ItemProperty -Path $policyPath -Name $name -ErrorAction SilentlyContinue) {
-                Set-ItemProperty -Path $policyPath -Name $name -Value 0 -Force
-            }
-        }
-    }
-    $services = 'srservice','vss','swprv'
-    foreach ($svc in $services) {
-        $svcObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
-        if ($svcObj) {
-            if ($svcObj.StartType -eq 'Disabled') {
-                Write-Output "Service $svc is disabled. Enabling."
-                Set-Service -Name $svc -StartupType Manual
-            }
-            if ($svcObj.Status -ne 'Running') {
-                try {
-                    Start-Service -Name $svc -ErrorAction Stop
-                } catch {
-                    Write-Output "Failed to start service ${svc}: $_"
-                }
-            }
-        }
-    }
+
+function Set-RollbackWindow {
+    Write-Output 'Extending Windows rollback period to 60 days'
     try {
-        Enable-ComputerRestore -Drive "$env:SystemDrive\" | Out-Null
+        Start-Process -FilePath dism.exe -ArgumentList '/Online','/Set-OSUninstallWindow','/Value:60' -Wait -NoNewWindow
+        Write-Output 'Rollback window configured'
     } catch {
-        Write-Output "Failed to enable System Restore: $_"
-    }
-    Write-Output 'Creating system restore point'
-    try {
-        Checkpoint-Computer -Description 'Pre-Windows11Upgrade' -RestorePointType 'MODIFY_SETTINGS'
-        Write-Output 'Restore point created'
-    } catch {
-        Write-Output "Failed to create restore point: $_"
+        Write-Output "Failed to set rollback window: $_"
     }
 }
 
@@ -229,8 +199,8 @@ catch {
     exit 1
 }
 
-# Create a system restore point for rollback
-Ensure-RestorePoint
+# Extend rollback window so users can return to Windows 10 for 60 days
+Set-RollbackWindow
 
 Write-Output 'Launching Installation Assistant'
 $proc = Start-Process -FilePath $InstallerPath -ArgumentList $assistantArgs -PassThru -Wait
