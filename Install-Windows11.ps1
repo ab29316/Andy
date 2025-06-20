@@ -204,7 +204,7 @@ $webClient = New-Object System.Net.WebClient
 try {
     $webClient.DownloadFile($InstallerUrl, $InstallerPath)
 } catch {
-    Write-Output "Failed to download $InstallerUrl: $_"
+    Write-Output "Failed to download ${InstallerUrl}: $_"
     Stop-Transcript
     exit 1
 }
