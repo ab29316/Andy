@@ -7,12 +7,7 @@
 
 param(
     [switch]$RemoveBloat,
-    [switch]$PostUpgrade,
-    [string]$Edition,
-    [string]$Language,
-    [string]$InstallationFolder,
-    [string[]]$AssistantExtraSwitches,
-    [switch]$EnableTelemetry
+    [switch]$PostUpgrade
 )
 
 Set-StrictMode -Version Latest
@@ -208,28 +203,8 @@ if (-not (Test-Path $InstallerPath)) {
     exit 1
 }
 
-# Build command line switches for the Installation Assistant.
-# Many undocumented flags exist, but most are unreliable. Use a
-# compact set that mirrors setup.exe functionality.
-$assistantSwitches = @(
-    '/Install',                # start the upgrade
-    '/SkipEULA',              # pre-accept license
-    '/QuietInstall',          # run silently
-    '/SkipCompatCheck',       # bypass hardware checks
-    '/SetPriorityLow',        # reduce resource usage
-    '/PreventWUUpgrade',      # avoid Windows Update interference
-    '/MinimizeToTaskBar',
-    '/ShowProgressInTaskBarIcon',
-    '/UninstallUponUpgrade',  # clean up when done
-    '/ForceUninstall',
-    '/NoRestartUI'
-)
-if ($EnableTelemetry) { $assistantSwitches += '/EnableTelemetry' }
-if ($InstallationFolder) { $assistantSwitches += "/InstallationFolder:`"$InstallationFolder`"" }
-if ($Edition) { $assistantSwitches += "/Edition:$Edition" }
-if ($Language) { $assistantSwitches += "/Language:$Language" }
-if ($AssistantExtraSwitches) { $assistantSwitches += $AssistantExtraSwitches }
-$assistantArgs = $assistantSwitches -join ' '
+# Use a single reliable switch for silent install.
+$assistantArgs = '/QuietInstall'
 
 Write-Output 'Creating scheduled task for post-upgrade actions'
 $null = Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue

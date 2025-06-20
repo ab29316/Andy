@@ -2,18 +2,10 @@
 
 This repository contains a PowerShell script `Install-Windows11.ps1` that upgrades a Windows 10 machine to Windows 11 using Microsoft's Installation Assistant. The script logs each step, monitors the Windows setup process, schedules itself to continue after the upgrade, creates a restore point for rollback, and optionally removes several built-in apps. Updates are installed only after Windows 11 is running.
 
-The script launches the Installation Assistant with a small set of proven switches so the upgrade runs quietly and cleans up after itself. You can provide extra switches using `-AssistantExtraSwitches` and specify edition, language, or a custom installation folder.
-
-Default switches:
+The script launches the Installation Assistant with a single reliable switch so the upgrade runs silently:
 
 ```
-/Install /SkipEULA /QuietInstall /SkipCompatCheck /SetPriorityLow /PreventWUUpgrade /MinimizeToTaskBar /ShowProgressInTaskBarIcon /UninstallUponUpgrade /ForceUninstall /NoRestartUI
-```
-
-Extra switches or options can be provided like so:
-
-```powershell
-./Install-Windows11.ps1 -Edition Pro -Language en-US -AssistantExtraSwitches '/EnableTelemetry'
+/QuietInstall
 ```
 
 ## Running the script
