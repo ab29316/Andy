@@ -12,6 +12,12 @@ param(
 
 Set-StrictMode -Version Latest
 
+# Use a single folder for downloads and logs so the scheduled task can
+# continue logging after reboot under the SYSTEM account
+$DownloadDir = 'C:\temp\Win11'
+Write-Output "Ensuring $DownloadDir exists"
+New-Item -ItemType Directory -Path $DownloadDir -Force | Out-Null
+
 trap {
     Write-Output "Unhandled error: $_"
     Stop-Transcript
@@ -80,7 +86,7 @@ if ($currentPolicy -eq 'Restricted') {
     Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 }
 
-$LogFile = "$env:USERPROFILE\install_windows11_full.log"
+$LogFile = Join-Path $DownloadDir 'install_windows11_full.log'
 Start-Transcript -Path $LogFile -Append
 Write-Output "Logging to $LogFile"
 
@@ -162,11 +168,6 @@ if ($PostUpgrade) {
 
 # ------ Pre-upgrade section ------
 
-
-$DownloadDir = 'C:\temp\Win11'
-Write-Output "Ensuring $DownloadDir exists"
-New-Item -ItemType Directory -Path $DownloadDir -Force | Out-Null
-
 $InstallerUrl  = 'https://go.microsoft.com/fwlink/?linkid=2171764'
 $InstallerPath = Join-Path $DownloadDir 'Windows11InstallationAssistant.exe'
 Write-Output 'Downloading Windows 11 Installation Assistant'
@@ -189,7 +190,7 @@ if ($RemoveBloat) { $actionArgs += ' -RemoveBloat' }
 $action = New-ScheduledTaskAction -Execute $psExe -Argument $actionArgs
 $trigger = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 0)
 try {
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 }
