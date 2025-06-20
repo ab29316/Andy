@@ -85,11 +85,6 @@ function Assert-Windows10 {
     }
 }
 
-$currentPolicy = Get-ExecutionPolicy
-if ($currentPolicy -eq 'Restricted') {
-    Write-Output 'Execution policy is Restricted. Temporarily setting Bypass for this process.'
-    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-}
 
 $LogFile = Join-Path $DownloadDir 'install_windows11_full.log'
 Start-Transcript -Path $LogFile -Append
