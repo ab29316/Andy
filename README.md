@@ -1,12 +1,12 @@
 # Andy
 
-This repository contains a PowerShell script `Install-Windows11.ps1` that upgrades a Windows 10 machine to Windows 11 using Microsoft's Installation Assistant. The script logs each step, monitors the Windows setup process and schedules itself to continue after the upgrade. It optionally removes built-in apps and, once Windows 11 is active, extends the rollback period to 60 days so you can return to Windows 10 if needed. Updates are installed only after Windows 11 is running.
+This repository contains a PowerShell script `Install-Windows11.ps1` that upgrades a Windows 10 machine to Windows 11 using Microsoft's Installation Assistant. The script logs each step, monitors the Windows setup process and schedules itself to continue after the upgrade. Once Windows 11 is active it runs `dism` to extend the rollback period to 60 days so you can return to Windows 10 if needed. Updates are installed only after Windows 11 is running, and optional bloat removal can be enabled.
 
 The script downloads the Installation Assistant to `C:\temp\Win11` and logs to
-`C:\temp\Win11\install_windows11_full.log`. It launches the assistant with a
-verified set of silent switches:
+`C:\temp\Win11\install_windows11_full.log`. It launches the assistant with
+these silent switches:
 ```
-/quietinstall /skipeula /auto upgrade /NoRestartUI /copylogs C:\temp\Win11
+/Install /SkipEULA /SkipSelfUpdate /SkipCompatCheck /QuietInstall
 ```
 ## Running the script
 

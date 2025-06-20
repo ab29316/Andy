@@ -69,8 +69,7 @@ function Invoke-SafeDownload {
     )
     try {
         Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -ErrorAction Stop
-    }
-    catch {
+    } catch {
         Write-Output "Failed to download ${Url}: $_"
         Stop-Transcript
         exit 1
@@ -179,16 +178,9 @@ if ($PostUpgrade) {
 $InstallerUrl  = 'https://go.microsoft.com/fwlink/?linkid=2171764'
 $InstallerPath = Join-Path $DownloadDir 'Windows11InstallationAssistant.exe'
 Write-Output 'Downloading Windows 11 Installation Assistant'
-$webClient = New-Object System.Net.WebClient
-try {
-    $webClient.DownloadFile($InstallerUrl, $InstallerPath)
-} catch {
-    Write-Output "Failed to download ${InstallerUrl}: $_"
-    Stop-Transcript
-    exit 1
-}
+Invoke-SafeDownload -Url $InstallerUrl -Destination $InstallerPath
 
-$assistantArgs = "/quietinstall /skipeula /auto upgrade /NoRestartUI /copylogs `"$DownloadDir`""
+$assistantArgs = "/Install /SkipEULA /SkipSelfUpdate /SkipCompatCheck /QuietInstall"
 
 Write-Output 'Creating scheduled task for post-upgrade actions'
 $null = Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
